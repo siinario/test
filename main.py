@@ -1,4 +1,4 @@
-import json, ssl, os, threading, time
+import json, ssl, os, threading, time, random
 import paho.mqtt.client as mqtt
 from pymongo import MongoClient
 from datetime import datetime
@@ -92,7 +92,10 @@ def on_message(client, userdata, msg):
 # ==========================================
 # 4. GẮN HÀM VÀO MQTT CLIENT
 # ==========================================
-mqtt_client = mqtt.Client(client_id="Python_Backend_Render")
+# Gắn thêm số ngẫu nhiên từ 1000 đến 9999 để không bao giờ bị trùng lặp
+random_client_id = f"Python_Backend_Render_{random.randint(1000, 9999)}"
+
+mqtt_client = mqtt.Client(client_id=random_client_id)
 mqtt_client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
 mqtt_client.tls_set(tls_version=ssl.PROTOCOL_TLS)
 
