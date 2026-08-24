@@ -13,7 +13,7 @@ MQTT_USERNAME = os.environ.get("MQTT_USERNAME")
 MQTT_PASSWORD = os.environ.get("MQTT_PASSWORD")
 MQTT_TOPIC = "floodguard/station1/data"
 
-last_alert_time = 0  # Đã thêm biến toàn cục
+last_alert_time = 0
 
 # ==========================================
 # 2. KẾT NỐI MONGODB
@@ -23,35 +23,23 @@ db = mongo_client["flood_monitoring"]
 collection = db["sensor_data"]
 
 # ==========================================
-# 3. CÁC HÀM XỬ LÝ & MQTT
+# 3. ĐỊNH NGHĨA CÁC HÀM XỬ LÝ (PHẢI ĐẶT TRÊN CÙNG)
 # ==========================================
 def send_telegram_alert(h, risk):
-    # Hàm giả lập (Bạn có thể thêm code gọi API Telegram thực tế vào đây sau)
-    print(f"🚨 [TELEGRAM ALERT] Ngập lụt! Mực nước: {h}m - Mức độ rủi ro: {risk}%")
-
-# Sửa lại hàm on_connect một chút để ép nhả log
-def on_connect(client, userdata, flags, rc):
-    if rc == 0:
-        print(f"✅ Đã kết nối HiveMQ! Đang lắng nghe: {MQTT_TOPIC}", flush=True)
-        client.subscribe(MQTT_TOPIC)
-    else:
-        print(f"❌ Lỗi kết nối MQTT. Mã từ chối từ Server: {rc}", flush=True)
-
-# Gắn các hàm callback vào client
-mqtt_client = mqtt.Client(client_id="Python_Backend_Render")
-mqtt_client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
-mqtt_client.tls_set(tls_version=ssl.PROTOCOL_TLS)
-
-mqtt_client.on_connect = on_connect
-mqtt_client.on_message = on_message
-mqtt_client.on_disconnect = on_disconnect  # Thêm dòng này
-mqtt_client.on_log = on_log                # Thêm dòng này
+    print(f"🚨 [TELEGRAM ALERT] Ngập lụt! Mực nước: {h}m - Mức độ rủi ro: {risk}%", flush=True)
 
 def on_disconnect(client, userdata, rc):
     print(f"⚠️ [CẢNH BÁO] Đã ngắt kết nối MQTT (Mã trạng thái: {rc})", flush=True)
 
 def on_log(client, userdata, level, buf):
     print(f"📝 [MQTT SYSTEM LOG]: {buf}", flush=True)
+
+def on_connect(client, userdata, flags, rc):
+    if rc == 0:
+        print(f"✅ Đã kết nối HiveMQ! Đang lắng nghe: {MQTT_TOPIC}", flush=True)
+        client.subscribe(MQTT_TOPIC)
+    else:
+        print(f"❌ Lỗi kết nối MQTT. Mã từ chối từ Server: {rc}", flush=True)
 
 def calculate_flood_metrics(distance, r_t, d_t):
     MAX_DEPTH = 4.25       
@@ -96,19 +84,26 @@ def on_message(client, userdata, msg):
             send_telegram_alert(calc_H, calc_risk)
             last_alert_time = current_time
             
-        print(f"✅ Đã lưu DB | H: {calc_H}m, R(t): {r_t}, D(t): {d_t}, Risk: {calc_risk}")
+        print(f"✅ Đã lưu DB | H: {calc_H}m, R(t): {r_t}, D(t): {d_t}, Risk: {calc_risk}", flush=True)
             
     except Exception as e:
-        print(f"❌ Lỗi xử lý dữ liệu: {e}")
+        print(f"❌ Lỗi xử lý dữ liệu: {e}", flush=True)
 
+# ==========================================
+# 4. GẮN HÀM VÀO MQTT CLIENT
+# ==========================================
 mqtt_client = mqtt.Client(client_id="Python_Backend_Render")
 mqtt_client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
 mqtt_client.tls_set(tls_version=ssl.PROTOCOL_TLS)
+
+# Phải gắn sau khi các hàm đã được định nghĩa ở trên
 mqtt_client.on_connect = on_connect
 mqtt_client.on_message = on_message
+mqtt_client.on_disconnect = on_disconnect
+mqtt_client.on_log = on_log
 
 # ==========================================
-# 4. WEB SERVER & API
+# 5. WEB SERVER & LUỒNG CHẠY MQTT
 # ==========================================
 app = Flask(__name__)
 
@@ -116,7 +111,6 @@ app = Flask(__name__)
 def home():
     return "🚀 Hệ thống FloodGuard Backend đang hoạt động tốt!"
 
-# Đã bổ sung API truy xuất theo trạm
 @app.route('/api/station/<station_name>', methods=['GET'])
 def get_station_data(station_name):
     try:
@@ -138,16 +132,16 @@ def get_station_data(station_name):
         return jsonify({"status": "error", "message": str(e)}), 500
 
 def run_mqtt():
-    print("⏳ Đang chuẩn bị kết nối HiveMQ...")
+    print("⏳ Đang chuẩn bị kết nối HiveMQ...", flush=True)
     try:
-        # Làm sạch biến môi trường để phòng lỗi khoảng trắng hoặc None
-        broker_url = str(MQTT_BROKER).replace("tls://", "").replace("mqtts://", "").strip()
-        print(f"🔍 URL Broker đang dùng: {broker_url}")
+        # Làm sạch chuỗi URL phòng trường hợp có khoảng trắng hoặc ký tự lạ
+        broker_url = str(MQTT_BROKER).replace("tls://", "").replace("mqtts://", "").replace("https://", "").strip()
+        print(f"🔍 URL Broker đang dùng: {broker_url}", flush=True)
         
         mqtt_client.connect(broker_url, 8883, keepalive=60)
         mqtt_client.loop_forever()
     except Exception as e:
-        print(f"🔥 LỖI CHÍ MẠNG KHI KẾT NỐI MQTT: {e}")
+        print(f"🔥 LỖI CHÍ MẠNG KHI KẾT NỐI MQTT: {e}", flush=True)
 
 if __name__ == "__main__":
     mqtt_thread = threading.Thread(target=run_mqtt)
