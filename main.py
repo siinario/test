@@ -29,12 +29,29 @@ def send_telegram_alert(h, risk):
     # Hàm giả lập (Bạn có thể thêm code gọi API Telegram thực tế vào đây sau)
     print(f"🚨 [TELEGRAM ALERT] Ngập lụt! Mực nước: {h}m - Mức độ rủi ro: {risk}%")
 
+# Sửa lại hàm on_connect một chút để ép nhả log
 def on_connect(client, userdata, flags, rc):
     if rc == 0:
-        print(f"✅ Đã kết nối HiveMQ! Đang lắng nghe: {MQTT_TOPIC}")
+        print(f"✅ Đã kết nối HiveMQ! Đang lắng nghe: {MQTT_TOPIC}", flush=True)
         client.subscribe(MQTT_TOPIC)
     else:
-        print(f"❌ Lỗi kết nối MQTT: {rc}")
+        print(f"❌ Lỗi kết nối MQTT. Mã từ chối từ Server: {rc}", flush=True)
+
+# Gắn các hàm callback vào client
+mqtt_client = mqtt.Client(client_id="Python_Backend_Render")
+mqtt_client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
+mqtt_client.tls_set(tls_version=ssl.PROTOCOL_TLS)
+
+mqtt_client.on_connect = on_connect
+mqtt_client.on_message = on_message
+mqtt_client.on_disconnect = on_disconnect  # Thêm dòng này
+mqtt_client.on_log = on_log                # Thêm dòng này
+
+def on_disconnect(client, userdata, rc):
+    print(f"⚠️ [CẢNH BÁO] Đã ngắt kết nối MQTT (Mã trạng thái: {rc})", flush=True)
+
+def on_log(client, userdata, level, buf):
+    print(f"📝 [MQTT SYSTEM LOG]: {buf}", flush=True)
 
 def calculate_flood_metrics(distance, r_t, d_t):
     MAX_DEPTH = 4.25       
