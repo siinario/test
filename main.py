@@ -121,9 +121,16 @@ def get_station_data(station_name):
         return jsonify({"status": "error", "message": str(e)}), 500
 
 def run_mqtt():
-    print("⏳ Đang kết nối HiveMQ...")
-    mqtt_client.connect(MQTT_BROKER, 8883, keepalive=60)
-    mqtt_client.loop_forever()
+    print("⏳ Đang chuẩn bị kết nối HiveMQ...")
+    try:
+        # Làm sạch biến môi trường để phòng lỗi khoảng trắng hoặc None
+        broker_url = str(MQTT_BROKER).replace("tls://", "").replace("mqtts://", "").strip()
+        print(f"🔍 URL Broker đang dùng: {broker_url}")
+        
+        mqtt_client.connect(broker_url, 8883, keepalive=60)
+        mqtt_client.loop_forever()
+    except Exception as e:
+        print(f"🔥 LỖI CHÍ MẠNG KHI KẾT NỐI MQTT: {e}")
 
 if __name__ == "__main__":
     mqtt_thread = threading.Thread(target=run_mqtt)
