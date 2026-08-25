@@ -25,6 +25,163 @@ collection = db["sensor_data"]
 # ==========================================
 # 3. ĐỊNH NGHĨA CÁC HÀM XỬ LÝ (PHẢI ĐẶT TRÊN CÙNG)
 # ==========================================
+
+"""
+stations_cache = {}
+system_latest_state = []
+
+def calculate_h_and_v(station_name, R_current, D_current, ts_current):
+    global stations_cache
+    state = stations_cache.get(
+        station_name,
+        {"H_prev": 0.0, "R_prev": None, "D_prev": None, "ts_prev": None},
+    )
+    H_prev = state["H_prev"]
+    R_prev = state["R_prev"]
+    D_prev = state["D_prev"]
+    ts_prev = state["ts_prev"]
+
+    # Bản ghi đầu tiên của trạm
+    if ts_prev is None or R_prev is None or D_prev is None:
+        H_current = 0.0
+        V_current = 0.0
+    else:
+        delta_t = (ts_current - ts_prev).total_seconds() / 60.0  # Chuyển sang phút
+
+        if delta_t > 0:
+            r_avg = (R_prev + R_current) / 20.0  # mm/phút
+            D_avg = (D_prev + D_current) / 2.0   # mm/phút
+            delta_H_step = ((r_avg - D_avg) * delta_t) / 10.0  # cm
+            H_current = max(0.0, H_prev + delta_H_step)
+            V_current = (H_current - H_prev) / delta_t
+        else:
+            H_current = H_prev
+            V_current = 0.0
+    # Cập nhật đệm
+    stations_cache[station_name] = {
+        "H_prev": H_current,
+        "R_prev": R_current,
+        "D_prev": D_current,
+        "ts_prev": ts_current,
+    }
+    return H_current, V_current
+
+
+def calculate_and_classify_risk(H,V,R,H_tide,
+    H_crit=50.0,
+    H_warning=30.0,
+    T_response=10.0,
+    w_H=0.75,
+    w_V=0.25,
+    R_high=15.0,
+    H_tide_high=1.50,
+):
+    delta_H_crit = H_crit - H_warning
+    V_crit = delta_H_crit / T_response
+
+    S_H = min(1.0, max(0.0, H / H_crit))
+    S_V = min(1.0, max(0.0, V / V_crit))
+
+    T_crit = float("inf")
+    if V > 0 and H < H_crit:
+        T_crit = (H_crit - H) / V
+
+    raw_S_risk = 100.0 * (w_H * S_H + w_V * S_V)
+
+    if T_crit <= T_response: S_risk = max(raw_S_risk, 75.0)
+    elif H >= H_crit: S_risk = max(raw_S_risk, 100.0 * S_H)
+    else: S_risk = raw_S_risk
+
+    if S_risk < 20: code, label, description = 0, "Safe", "An toàn"
+    elif 20 <= S_risk < 45: code, label, description = 1, "Advisory", "Cảnh báo nhẹ"
+    elif 45 <= S_risk < 75: code, label, description = 2, "Warning", "Nguy hiểm"
+    else: code, label, description = 3, "Emergency", "Khẩn cấp"
+
+    if code == 0:
+        return {
+            "S_risk": round(S_risk, 2),
+            "T_crit_min": round(T_crit, 2) if T_crit != float("inf") else "N/A",
+            "code": code,
+            "label": label,
+            "description": description,
+            "status": "An toàn",
+        }
+        
+    heavy_rain = R >= R_high
+    high_tide = H_tide >= H_tide_high
+
+    if heavy_rain and high_tide: Status = "Ngập kết hợp Mưa lớn + Triều cường"
+    elif not heavy_rain and high_tide: Status = "Ngập do Triều cường"
+    elif heavy_rain and not high_tide: Status = "Ngập do Lượng mưa tăng nhanh"
+    else: Status = "Ngập cục bộ do tích tụ tại bề mặt"
+
+    return {
+        "S_risk": round(S_risk, 2),
+        "T_crit_min": round(T_crit, 2) if T_crit != float("inf") else "N/A",
+        "code": code,
+        "label": label,
+        "description": description,
+        "status": Status,
+    }
+
+def update_or_append_station_result(new_record):
+    global system_latest_state
+    updated = False
+    for idx, record in enumerate(system_latest_state):
+        if record["station_name"] == new_record["station_name"]:
+            system_latest_state[idx] = new_record
+            updated = True
+            break
+    if not updated:
+        system_latest_state.append(new_record)
+
+
+
+def process_station_data(station_name, R, D, H_tide, timestamp_str):
+    ts_current = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S")
+    # 1. Tính H, V
+    H_current, V_current = calculate_h_and_v(
+        station_name, float(R), float(D), ts_current
+    )
+    # 2. calculate_and_classify_risk
+    risk_result = calculate_and_classify_risk(
+        H=H_current, V=V_current, R=float(R), H_tide=float(H_tide)
+    )
+    # 3. Đóng gói final_record
+    final_record = {
+        "station_name": station_name,
+        "timestamp": timestamp_str,
+        "R": float(R),
+        "D": float(D),
+        "H_tide": float(H_tide),
+        "H": round(H_current, 2),
+        "V": round(V_current, 2),
+        "S_risk": risk_result["S_risk"],
+        "T_crit_min": risk_result["T_crit_min"],
+        "code":risk_result["code"],
+        "label": risk_result["label"],
+        "description": risk_result["description"],
+        "status": risk_result["status"],
+        "processed_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    # 4. Update mảng trạng thái
+    update_or_append_station_result(final_record)
+    return final_record
+
+"""
+
+
+
+
+
+
+
+
+
+
+
+
+
 def send_telegram_alert(h, risk):
     print(f"🚨 [TELEGRAM ALERT] Ngập lụt! Mực nước: {h}m - Mức độ rủi ro: {risk}%", flush=True)
 
