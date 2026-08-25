@@ -215,44 +215,46 @@ def process_station_data(station_name, R, D, H_tide, timestamp_str):
     update_or_append_station_result(final_record)
     return final_record
 
-# ==========================================
-# 5. KHỚP NỐI MQTT VỚI THUẬT TOÁN
-# ==========================================
+
 # ==========================================
 # 5. KHỚP NỐI MQTT VỚI THUẬT TOÁN (CẬP NHẬT CHO 9 TRẠM)
 # ==========================================
 def on_message(client, userdata, msg):
-    global last_alert_time
     try:
-        data = json.loads(msg.payload.decode('utf-8'))
+        raw_payload = json.loads(msg.payload.decode('utf-8'))
+        timestamp_str = raw_payload.get("timestamp")
         
-        # 1. Trích xuất Timestamp chung của cả gói dữ liệu
-        timestamp_str = data.get("timestamp")
-        stations_array = data.get("stations_data", [])
-        
-        # 2. Vòng lặp xử lý từng trạm trong mảng
-        for station_info in stations_array:
+        # 1. Chạy toán học cho 9 trạm
+        processed_records = []
+        for station_info in raw_payload.get("stations_data", []):
             station_name = station_info.get("station_name", "Unknown")
-            r_t = station_info.get("R", 0.0)
-            d_t = station_info.get("D", 0.0)
-            h_tide = station_info.get("H_tide", 0.0)
+            R, D, H_tide = station_info.get("R", 0.0), station_info.get("D", 0.0), station_info.get("H_tide", 0.0)
             
-            # Chạy thuật toán cho trạm hiện tại
-            final_record = process_station_data(station_name, r_t, d_t, h_tide, timestamp_str)
+            result = process_station_data(station_name, R, D, H_tide, timestamp_str)
+            processed_records.append(result)
             
-            # Lưu bản ghi của trạm này vào DB
-            collection.insert_one(final_record.copy())
+        if processed_records:
+            # 2. ĐÓNG GÓI 9 TRẠM VÀO 1 DOCUMENT TỔNG HỢP
+            master_document = {
+                "timestamp": timestamp_str,
+                "processed_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+                "stations_data": processed_records
+            }
             
-            # Cảnh báo Telegram (nếu rủi ro cao)
-            current_time = time.time()
-            if final_record["S_risk"] > 80 and (current_time - last_alert_time > 300):
-                send_telegram_alert(final_record["H"], final_record["S_risk"], final_record["status"])
-                last_alert_time = current_time
-                
-        print(f"✅ DB | Đã xử lý và lưu {len(stations_array)} trạm lúc {timestamp_str}", flush=True)
+            # 3. Bắn MQTT (dùng .copy() hoặc bóc tách trực tiếp để tránh _id)
+            client.publish(MQTT_TOPIC_PROCESSED, json.dumps({
+                "timestamp": timestamp_str, 
+                "data": processed_records
+            }))
             
-    except Exception as e:
-        print(f"❌ Lỗi xử lý dữ liệu: {e}", flush=True)
+            # Cập nhật RAM để phục vụ API Lấy dữ liệu mới nhất
+            update_system_state(processed_records)
+            
+            # 4. LƯU VÀO DB (Dùng insert_one thay vì insert_many)
+            collection.insert_one(master_document)
+            
+        print(f"✅ Đã lưu 1 file JSON tổng (chứa 9 trạm) | Lúc {timestamp_str}", flush=True)
+            
     except Exception as e:
         print(f"❌ Lỗi xử lý dữ liệu: {e}", flush=True)
 
@@ -273,49 +275,39 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "🚀 Hệ thống FloodGuard Backend đang hoạt động tốt với Thuật toán thông minh!"
+    return "🚀 FloodGuard Data Pipeline đang hoạt động!"
 
-# API: Lấy Lịch sử Trạm
-@app.route('/api/station/<station_name>', methods=['GET'])
-def get_station_data(station_name):
-    try:
-        limit_records = int(request.args.get('limit', 50))
-        query = {"station_name": station_name}
-        cursor = collection.find(query, {"_id": 0}).sort("processed_at", -1).limit(limit_records)
-        data_list = list(cursor)
-        
-        if not data_list:
-            return jsonify({"status": "error", "message": f"Không có dữ liệu cho trạm {station_name}"}), 404
-            
-        return jsonify({"status": "success", "station": station_name, "total_records": len(data_list), "data": data_list}), 200
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-# API MỚI: Lấy Trạng thái MỚI NHẤT của TOÀN BỘ các trạm
 @app.route('/api/stations/latest', methods=['GET'])
 def get_all_stations_latest():
-    try:
-        return jsonify({
-            "status": "success",
-            "total_stations": len(system_latest_state),
-            "data": system_latest_state
-        }), 200
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+    # Lấy từ RAM, không bị ảnh hưởng bởi _id
+    return jsonify({"status": "success", "total_stations": len(system_latest_state), "data": system_latest_state}), 200
+
+@app.route('/api/station/<station_name>', methods=['GET'])
+def get_station_data(station_name):
+    limit_records = int(request.args.get('limit', 50))
+    
+    # Tìm các document tổng hợp có chứa tên trạm trong mảng stations_data
+    cursor = collection.find(
+        {"stations_data.station_name": station_name}, 
+        {"_id": 0}
+    ).sort("timestamp", -1).limit(limit_records)
+    
+    data_list = []
+    
+    # Lọc ra chính xác trạm mà Frontend yêu cầu từ mảng tổng hợp
+    for doc in cursor:
+        for station in doc.get("stations_data", []):
+            if station.get("station_name") == station_name:
+                data_list.append(station)
+                break  # Tìm thấy trạm trong phút này thì chuyển sang phút tiếp theo
+                
+    return jsonify({"status": "success", "data": data_list}), 200
 
 def run_mqtt():
-    print("⏳ Đang chuẩn bị kết nối HiveMQ...", flush=True)
-    try:
-        broker_url = str(MQTT_BROKER).replace("tls://", "").replace("mqtts://", "").replace("https://", "").strip()
-        mqtt_client.connect(broker_url, 8883, keepalive=60)
-        mqtt_client.loop_forever()
-    except Exception as e:
-        print(f"🔥 LỖI KẾT NỐI MQTT: {e}", flush=True)
+    broker_url = str(MQTT_BROKER).replace("tls://", "").replace("mqtts://", "").replace("https://", "").strip()
+    mqtt_client.connect(broker_url, 8883, keepalive=60)
+    mqtt_client.loop_forever()
 
 if __name__ == "__main__":
-    mqtt_thread = threading.Thread(target=run_mqtt)
-    mqtt_thread.daemon = True
-    mqtt_thread.start()
-    
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
+    threading.Thread(target=run_mqtt, daemon=True).start()
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
