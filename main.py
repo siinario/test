@@ -15,6 +15,10 @@ MQTT_TOPIC = "floodguard/station1/data"
 
 last_alert_time = 0
 
+# Khởi tạo bộ đệm cho thuật toán mới
+stations_cache = {}
+system_latest_state = []
+
 # ==========================================
 # 2. KẾT NỐI MONGODB
 # ==========================================
@@ -23,13 +27,29 @@ db = mongo_client["flood_monitoring"]
 collection = db["sensor_data"]
 
 # ==========================================
-# 3. ĐỊNH NGHĨA CÁC HÀM XỬ LÝ (PHẢI ĐẶT TRÊN CÙNG)
+# 3. CÁC HÀM MQTT CƠ BẢN
 # ==========================================
+def send_telegram_alert(h, risk, status):
+    print(f"🚨 [TELEGRAM ALERT] {status}! Mực nước: {h}m - Mức độ rủi ro: {risk}%", flush=True)
 
-"""
-stations_cache = {}
-system_latest_state = []
+def on_disconnect(client, userdata, rc):
+    print(f"⚠️ [CẢNH BÁO] Đã ngắt kết nối MQTT (Mã trạng thái: {rc})", flush=True)
 
+def on_log(client, userdata, level, buf):
+    # Bạn có thể comment dòng dưới lại nếu thấy log in ra quá dài
+    # print(f"📝 [MQTT LOG]: {buf}", flush=True)
+    pass
+
+def on_connect(client, userdata, flags, rc):
+    if rc == 0:
+        print(f"✅ Đã kết nối HiveMQ! Đang lắng nghe: {MQTT_TOPIC}", flush=True)
+        client.subscribe(MQTT_TOPIC)
+    else:
+        print(f"❌ Lỗi kết nối MQTT. Mã từ chối từ Server: {rc}", flush=True)
+
+# ==========================================
+# 4. THUẬT TOÁN XỬ LÝ DỮ LIỆU THỦY VĂN (MỚI)
+# ==========================================
 def calculate_h_and_v(station_name, R_current, D_current, ts_current):
     global stations_cache
     state = stations_cache.get(
@@ -41,23 +61,22 @@ def calculate_h_and_v(station_name, R_current, D_current, ts_current):
     D_prev = state["D_prev"]
     ts_prev = state["ts_prev"]
 
-    # Bản ghi đầu tiên của trạm
     if ts_prev is None or R_prev is None or D_prev is None:
         H_current = 0.0
         V_current = 0.0
     else:
-        delta_t = (ts_current - ts_prev).total_seconds() / 60.0  # Chuyển sang phút
+        delta_t = (ts_current - ts_prev).total_seconds() / 60.0 
 
         if delta_t > 0:
-            r_avg = (R_prev + R_current) / 20.0  # mm/phút
-            D_avg = (D_prev + D_current) / 2.0   # mm/phút
-            delta_H_step = ((r_avg - D_avg) * delta_t) / 10.0  # cm
+            r_avg = (R_prev + R_current) / 20.0  
+            D_avg = (D_prev + D_current) / 2.0   
+            delta_H_step = ((r_avg - D_avg) * delta_t) / 10.0  
             H_current = max(0.0, H_prev + delta_H_step)
             V_current = (H_current - H_prev) / delta_t
         else:
             H_current = H_prev
             V_current = 0.0
-    # Cập nhật đệm
+            
     stations_cache[station_name] = {
         "H_prev": H_current,
         "R_prev": R_current,
@@ -66,16 +85,7 @@ def calculate_h_and_v(station_name, R_current, D_current, ts_current):
     }
     return H_current, V_current
 
-
-def calculate_and_classify_risk(H,V,R,H_tide,
-    H_crit=50.0,
-    H_warning=30.0,
-    T_response=10.0,
-    w_H=0.75,
-    w_V=0.25,
-    R_high=15.0,
-    H_tide_high=1.50,
-):
+def calculate_and_classify_risk(H, V, R, H_tide, H_crit=50.0, H_warning=30.0, T_response=10.0, w_H=0.75, w_V=0.25, R_high=15.0, H_tide_high=1.50):
     delta_H_crit = H_crit - H_warning
     V_crit = delta_H_crit / T_response
 
@@ -135,19 +145,11 @@ def update_or_append_station_result(new_record):
     if not updated:
         system_latest_state.append(new_record)
 
-
-
 def process_station_data(station_name, R, D, H_tide, timestamp_str):
     ts_current = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S")
-    # 1. Tính H, V
-    H_current, V_current = calculate_h_and_v(
-        station_name, float(R), float(D), ts_current
-    )
-    # 2. calculate_and_classify_risk
-    risk_result = calculate_and_classify_risk(
-        H=H_current, V=V_current, R=float(R), H_tide=float(H_tide)
-    )
-    # 3. Đóng gói final_record
+    H_current, V_current = calculate_h_and_v(station_name, float(R), float(D), ts_current)
+    risk_result = calculate_and_classify_risk(H=H_current, V=V_current, R=float(R), H_tide=float(H_tide))
+    
     final_record = {
         "station_name": station_name,
         "timestamp": timestamp_str,
@@ -158,135 +160,99 @@ def process_station_data(station_name, R, D, H_tide, timestamp_str):
         "V": round(V_current, 2),
         "S_risk": risk_result["S_risk"],
         "T_crit_min": risk_result["T_crit_min"],
-        "code":risk_result["code"],
+        "code": risk_result["code"],
         "label": risk_result["label"],
         "description": risk_result["description"],
         "status": risk_result["status"],
         "processed_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
     }
-    # 4. Update mảng trạng thái
+    
     update_or_append_station_result(final_record)
     return final_record
 
-"""
-
-
-
-
-
-
-
-
-
-
-
-
-
-def send_telegram_alert(h, risk):
-    print(f"🚨 [TELEGRAM ALERT] Ngập lụt! Mực nước: {h}m - Mức độ rủi ro: {risk}%", flush=True)
-
-def on_disconnect(client, userdata, rc):
-    print(f"⚠️ [CẢNH BÁO] Đã ngắt kết nối MQTT (Mã trạng thái: {rc})", flush=True)
-
-def on_log(client, userdata, level, buf):
-    print(f"📝 [MQTT SYSTEM LOG]: {buf}", flush=True)
-
-def on_connect(client, userdata, flags, rc):
-    if rc == 0:
-        print(f"✅ Đã kết nối HiveMQ! Đang lắng nghe: {MQTT_TOPIC}", flush=True)
-        client.subscribe(MQTT_TOPIC)
-    else:
-        print(f"❌ Lỗi kết nối MQTT. Mã từ chối từ Server: {rc}", flush=True)
-
-def calculate_flood_metrics(distance, r_t, d_t):
-    MAX_DEPTH = 4.25       
-    SURFACE_AREA = 10.0
-    
-    H = MAX_DEPTH - distance
-    if H < 0: H = 0
-        
-    V = SURFACE_AREA * H
-    base_risk = (H / MAX_DEPTH) * 100
-    risk_modifier = (r_t * 10) - (d_t * 5)
-    
-    risk_score = base_risk + risk_modifier
-    
-    if risk_score > 100: risk_score = 100
-    if risk_score < 0: risk_score = 0
-        
-    return round(H, 2), round(V, 2), round(risk_score, 2)
-
+# ==========================================
+# 5. KHỚP NỐI MQTT VỚI THUẬT TOÁN
+# ==========================================
 def on_message(client, userdata, msg):
     global last_alert_time
     try:
         data = json.loads(msg.payload.decode('utf-8'))
         
-        raw_distance = data.get("distance", 0)
-        r_t = data.get("R_t", data.get("R(t)", 0))
-        d_t = data.get("D_t", data.get("D(t)", 0))
+        # 1. Trích xuất và chuẩn hóa Timestamp
+        station_name = data.get("station", "Unknown")
+        date_str = data.get("date", datetime.utcnow().strftime("%Y-%m-%d"))
+        time_min = data.get("time_min", "00:00")
         
-        calc_H, calc_V, calc_risk = calculate_flood_metrics(raw_distance, r_t, d_t)
+        # Đảm bảo format là %Y-%m-%d %H:%M:%S
+        if len(time_min) == 5: 
+            timestamp_str = f"{date_str} {time_min}:00"
+        else:
+            timestamp_str = f"{date_str} {time_min}"
+            
+        r_t = data.get("R_t", data.get("R(t)", 0.0))
+        d_t = data.get("D_t", data.get("D(t)", 0.0))
+        h_tide = data.get("H_tide", 0.0)
         
-        data["H"] = calc_H
-        data["V"] = calc_V
-        data["risk_score"] = calc_risk
-        data["R_t"] = round(r_t, 3)
-        data["D_t"] = round(d_t, 3)
-        data["server_timestamp"] = datetime.utcnow()
+        # 2. Xử lý thuật toán
+        final_record = process_station_data(station_name, r_t, d_t, h_tide, timestamp_str)
         
-        collection.insert_one(data)
+        # 3. Lưu vào DB (dùng .copy() để không làm hỏng dữ liệu trong RAM)
+        collection.insert_one(final_record.copy())
         
+        # 4. Cảnh báo Telegram
         current_time = time.time()
-        if calc_risk > 80 and (current_time - last_alert_time > 300):
-            send_telegram_alert(calc_H, calc_risk)
+        if final_record["S_risk"] > 80 and (current_time - last_alert_time > 300):
+            send_telegram_alert(final_record["H"], final_record["S_risk"], final_record["status"])
             last_alert_time = current_time
             
-        print(f"✅ Đã lưu DB | H: {calc_H}m, R(t): {r_t}, D(t): {d_t}, Risk: {calc_risk}", flush=True)
+        print(f"✅ DB | Trạm {station_name} | Lúc: {time_min} | H: {final_record['H']}m | Risk: {final_record['S_risk']}% | Code: {final_record['code']} - {final_record['status']}", flush=True)
             
     except Exception as e:
         print(f"❌ Lỗi xử lý dữ liệu: {e}", flush=True)
 
-# ==========================================
-# 4. GẮN HÀM VÀO MQTT CLIENT
-# ==========================================
-# Gắn thêm số ngẫu nhiên từ 1000 đến 9999 để không bao giờ bị trùng lặp
+# Gắn hàm vào Client
 random_client_id = f"Python_Backend_Render_{random.randint(1000, 9999)}"
-
 mqtt_client = mqtt.Client(client_id=random_client_id)
 mqtt_client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
 mqtt_client.tls_set(tls_version=ssl.PROTOCOL_TLS)
-
-# Phải gắn sau khi các hàm đã được định nghĩa ở trên
 mqtt_client.on_connect = on_connect
 mqtt_client.on_message = on_message
 mqtt_client.on_disconnect = on_disconnect
 mqtt_client.on_log = on_log
 
 # ==========================================
-# 5. WEB SERVER & LUỒNG CHẠY MQTT
+# 6. WEB SERVER & API 
 # ==========================================
 app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "🚀 Hệ thống FloodGuard Backend đang hoạt động tốt!"
+    return "🚀 Hệ thống FloodGuard Backend đang hoạt động tốt với Thuật toán thông minh!"
 
+# API: Lấy Lịch sử Trạm
 @app.route('/api/station/<station_name>', methods=['GET'])
 def get_station_data(station_name):
     try:
         limit_records = int(request.args.get('limit', 50))
-        query = {"station": station_name}
-        cursor = collection.find(query, {"_id": 0}).sort("server_timestamp", -1).limit(limit_records)
+        query = {"station_name": station_name}
+        cursor = collection.find(query, {"_id": 0}).sort("processed_at", -1).limit(limit_records)
         data_list = list(cursor)
         
         if not data_list:
             return jsonify({"status": "error", "message": f"Không có dữ liệu cho trạm {station_name}"}), 404
             
+        return jsonify({"status": "success", "station": station_name, "total_records": len(data_list), "data": data_list}), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# API MỚI: Lấy Trạng thái MỚI NHẤT của TOÀN BỘ các trạm
+@app.route('/api/stations/latest', methods=['GET'])
+def get_all_stations_latest():
+    try:
         return jsonify({
             "status": "success",
-            "station": station_name,
-            "total_records": len(data_list),
-            "data": data_list
+            "total_stations": len(system_latest_state),
+            "data": system_latest_state
         }), 200
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -294,14 +260,11 @@ def get_station_data(station_name):
 def run_mqtt():
     print("⏳ Đang chuẩn bị kết nối HiveMQ...", flush=True)
     try:
-        # Làm sạch chuỗi URL phòng trường hợp có khoảng trắng hoặc ký tự lạ
         broker_url = str(MQTT_BROKER).replace("tls://", "").replace("mqtts://", "").replace("https://", "").strip()
-        print(f"🔍 URL Broker đang dùng: {broker_url}", flush=True)
-        
         mqtt_client.connect(broker_url, 8883, keepalive=60)
         mqtt_client.loop_forever()
     except Exception as e:
-        print(f"🔥 LỖI CHÍ MẠNG KHI KẾT NỐI MQTT: {e}", flush=True)
+        print(f"🔥 LỖI KẾT NỐI MQTT: {e}", flush=True)
 
 if __name__ == "__main__":
     mqtt_thread = threading.Thread(target=run_mqtt)
