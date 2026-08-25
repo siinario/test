@@ -173,40 +173,41 @@ def process_station_data(station_name, R, D, H_tide, timestamp_str):
 # ==========================================
 # 5. KHỚP NỐI MQTT VỚI THUẬT TOÁN
 # ==========================================
+# ==========================================
+# 5. KHỚP NỐI MQTT VỚI THUẬT TOÁN (CẬP NHẬT CHO 9 TRẠM)
+# ==========================================
 def on_message(client, userdata, msg):
     global last_alert_time
     try:
         data = json.loads(msg.payload.decode('utf-8'))
         
-        # 1. Trích xuất và chuẩn hóa Timestamp
-        station_name = data.get("station", "Unknown")
-        date_str = data.get("date", datetime.utcnow().strftime("%Y-%m-%d"))
-        time_min = data.get("time_min", "00:00")
+        # 1. Trích xuất Timestamp chung của cả gói dữ liệu
+        timestamp_str = data.get("timestamp")
+        stations_array = data.get("stations_data", [])
         
-        # Đảm bảo format là %Y-%m-%d %H:%M:%S
-        if len(time_min) == 5: 
-            timestamp_str = f"{date_str} {time_min}:00"
-        else:
-            timestamp_str = f"{date_str} {time_min}"
+        # 2. Vòng lặp xử lý từng trạm trong mảng
+        for station_info in stations_array:
+            station_name = station_info.get("station_name", "Unknown")
+            r_t = station_info.get("R", 0.0)
+            d_t = station_info.get("D", 0.0)
+            h_tide = station_info.get("H_tide", 0.0)
             
-        r_t = data.get("R_t", data.get("R(t)", 0.0))
-        d_t = data.get("D_t", data.get("D(t)", 0.0))
-        h_tide = data.get("H_tide", 0.0)
-        
-        # 2. Xử lý thuật toán
-        final_record = process_station_data(station_name, r_t, d_t, h_tide, timestamp_str)
-        
-        # 3. Lưu vào DB (dùng .copy() để không làm hỏng dữ liệu trong RAM)
-        collection.insert_one(final_record.copy())
-        
-        # 4. Cảnh báo Telegram
-        current_time = time.time()
-        if final_record["S_risk"] > 80 and (current_time - last_alert_time > 300):
-            send_telegram_alert(final_record["H"], final_record["S_risk"], final_record["status"])
-            last_alert_time = current_time
+            # Chạy thuật toán cho trạm hiện tại
+            final_record = process_station_data(station_name, r_t, d_t, h_tide, timestamp_str)
             
-        print(f"✅ DB | Trạm {station_name} | Lúc: {time_min} | H: {final_record['H']}m | Risk: {final_record['S_risk']}% | Code: {final_record['code']} - {final_record['status']}", flush=True)
+            # Lưu bản ghi của trạm này vào DB
+            collection.insert_one(final_record.copy())
             
+            # Cảnh báo Telegram (nếu rủi ro cao)
+            current_time = time.time()
+            if final_record["S_risk"] > 80 and (current_time - last_alert_time > 300):
+                send_telegram_alert(final_record["H"], final_record["S_risk"], final_record["status"])
+                last_alert_time = current_time
+                
+        print(f"✅ DB | Đã xử lý và lưu {len(stations_array)} trạm lúc {timestamp_str}", flush=True)
+            
+    except Exception as e:
+        print(f"❌ Lỗi xử lý dữ liệu: {e}", flush=True)
     except Exception as e:
         print(f"❌ Lỗi xử lý dữ liệu: {e}", flush=True)
 
