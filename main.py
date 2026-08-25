@@ -11,7 +11,8 @@ MONGO_URI = os.environ.get("MONGO_URI")
 MQTT_BROKER = os.environ.get("MQTT_BROKER")
 MQTT_USERNAME = os.environ.get("MQTT_USERNAME")
 MQTT_PASSWORD = os.environ.get("MQTT_PASSWORD")
-MQTT_TOPIC = "floodguard/station1/data"
+MQTT_TOPIC_RAW = "floodguard/raw_data"
+MQTT_TOPIC_PROCESSED = "floodguard/processed_data"
 
 last_alert_time = 0
 
@@ -42,8 +43,8 @@ def on_log(client, userdata, level, buf):
 
 def on_connect(client, userdata, flags, rc):
     if rc == 0:
-        print(f"✅ Đã kết nối HiveMQ! Đang lắng nghe: {MQTT_TOPIC}", flush=True)
-        client.subscribe(MQTT_TOPIC)
+        print(f"✅ Đã kết nối HiveMQ! Đang lắng nghe: {MQTT_TOPIC_RAW}", flush=True)
+        client.subscribe(MQTT_TOPIC_RAW) # Đổi thành MQTT_TOPIC_RAW
     else:
         print(f"❌ Lỗi kết nối MQTT. Mã từ chối từ Server: {rc}", flush=True)
 
