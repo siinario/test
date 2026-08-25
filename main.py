@@ -249,7 +249,7 @@ def on_message(client, userdata, msg):
             }))
             
             # Cập nhật RAM để phục vụ API Lấy dữ liệu mới nhất
-            update_system_state(processed_records)
+            #update_system_state(processed_records)
             
             # 4. LƯU VÀO DB (Dùng insert_one thay vì insert_many)
             collection.insert_one(master_document)
