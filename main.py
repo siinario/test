@@ -50,37 +50,75 @@ def on_connect(client, userdata, flags, rc):
 # ==========================================
 # 4. THUẬT TOÁN XỬ LÝ DỮ LIỆU THỦY VĂN (MỚI)
 # ==========================================
-def calculate_h_and_v(station_name, R_current, D_current, ts_current):
+def calculate_h_and_v(station_name, R_current, D_current, H_tide_current, ts_current):
     global stations_cache
-    state = stations_cache.get(
-        station_name,
-        {"H_prev": 0.0, "R_prev": None, "D_prev": None, "ts_prev": None},
-    )
+    
+    # KHẮC PHỤC 1: Phục hồi bộ nhớ từ Database nếu RAM trống
+    if station_name not in stations_cache:
+        last_record = collection.find_one(
+            {"station_name": station_name}, 
+            sort=[("processed_at", -1)]
+        )
+        
+        if last_record:
+            try:
+                last_ts = datetime.strptime(last_record.get("timestamp"), "%Y-%m-%d %H:%M:%S")
+            except:
+                last_ts = None
+                
+            stations_cache[station_name] = {
+                "H_prev": last_record.get("H", 0.0),
+                "R_prev": last_record.get("R", 0.0),
+                "D_prev": last_record.get("D", 0.0),
+                "H_tide_prev": last_record.get("H_tide", H_tide_current), 
+                "ts_prev": last_ts
+            }
+        else:
+            # Khởi tạo mặc định nếu trạm hoàn toàn mới
+            stations_cache[station_name] = {
+                "H_prev": 0.0, "R_prev": None, "D_prev": None, 
+                "H_tide_prev": None, "ts_prev": None
+            }
+
+    # Bắt đầu tính toán
+    state = stations_cache[station_name]
     H_prev = state["H_prev"]
     R_prev = state["R_prev"]
     D_prev = state["D_prev"]
+    H_tide_prev = state.get("H_tide_prev")
     ts_prev = state["ts_prev"]
 
-    if ts_prev is None or R_prev is None or D_prev is None:
-        H_current = 0.0
+    if ts_prev is None or R_prev is None or D_prev is None or H_tide_prev is None:
+        # Vẫn trả về H_prev ở giây đo đầu tiên, vì toán học cần thời gian delta_t để nước tích tụ
+        H_current = H_prev 
         V_current = 0.0
     else:
-        delta_t = (ts_current - ts_prev).total_seconds() / 60.0 
+        delta_t = (ts_current - ts_prev).total_seconds() / 60.0  # phút
 
         if delta_t > 0:
+            # 1. Mức nước dâng do Mưa - Xả (cm)
             r_avg = (R_prev + R_current) / 20.0  
             D_avg = (D_prev + D_current) / 2.0   
-            delta_H_step = ((r_avg - D_avg) * delta_t) / 10.0  
+            delta_H_rain = ((r_avg - D_avg) * delta_t) / 10.0  
+            
+            # KHẮC PHỤC 2: Mức nước dâng/rút do Triều cường (Đổi mét sang cm)
+            delta_H_tide = (H_tide_current - H_tide_prev) * 100.0
+            
+            # Tổng hợp nước
+            delta_H_step = delta_H_rain + delta_H_tide
             H_current = max(0.0, H_prev + delta_H_step)
+            
             V_current = (H_current - H_prev) / delta_t
         else:
             H_current = H_prev
             V_current = 0.0
             
+    # Cập nhật lại bộ nhớ
     stations_cache[station_name] = {
         "H_prev": H_current,
         "R_prev": R_current,
         "D_prev": D_current,
+        "H_tide_prev": H_tide_current, # Cập nhật H_tide cũ
         "ts_prev": ts_current,
     }
     return H_current, V_current
@@ -147,8 +185,15 @@ def update_or_append_station_result(new_record):
 
 def process_station_data(station_name, R, D, H_tide, timestamp_str):
     ts_current = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S")
-    H_current, V_current = calculate_h_and_v(station_name, float(R), float(D), ts_current)
-    risk_result = calculate_and_classify_risk(H=H_current, V=V_current, R=float(R), H_tide=float(H_tide))
+    
+    # Đã truyền thêm tham số float(H_tide) vào hàm tính toán
+    H_current, V_current = calculate_h_and_v(
+        station_name, float(R), float(D), float(H_tide), ts_current
+    )
+    
+    risk_result = calculate_and_classify_risk(
+        H=H_current, V=V_current, R=float(R), H_tide=float(H_tide)
+    )
     
     final_record = {
         "station_name": station_name,
