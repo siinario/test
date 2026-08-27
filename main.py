@@ -124,7 +124,7 @@ def calculate_h_and_v(station_name, R_current, D_current, H_tide_current, ts_cur
     }
     return H_current, V_current
 
-def calculate_and_classify_risk(H, V, R, H_tide, H_crit=50.0, H_warning=30.0, T_response=10.0, w_H=0.75, w_V=0.25, R_high=15.0, H_tide_high=1.50):
+def calculate_and_classify_risk(H, V, R, H_tide, H_crit=50.0, H_warning=30.0, T_response=10.0, w_H=0.75, w_V=0.25, R_high=15.0, H_tide_high=150):
     delta_H_crit = H_crit - H_warning
     V_crit = delta_H_crit / T_response
 
