@@ -54,33 +54,41 @@ def on_connect(client, userdata, flags, rc):
 def calculate_h_and_v(station_name, R_current, D_current, H_tide_current, ts_current):
     global stations_cache
     
-    # KHẮC PHỤC 1: Phục hồi bộ nhớ từ Database nếu RAM trống
+    # KHẮC PHỤC 1: Phục hồi bộ nhớ từ MongoDB (Bóc tách chuẩn từ mảng stations_data)
     if station_name not in stations_cache:
         last_record = collection.find_one(
-            {"station_name": station_name}, 
+            {"stations_data.station_name": station_name}, 
             sort=[("processed_at", -1)]
         )
         
         if last_record:
+            # Lọc đúng dict của station_name trong mảng stations_data
+            st_data = next(
+                (s for s in last_record.get("stations_data", []) if s.get("station_name") == station_name), 
+                {}
+            )
             try:
                 last_ts = datetime.strptime(last_record.get("timestamp"), "%Y-%m-%d %H:%M:%S")
             except:
                 last_ts = None
                 
             stations_cache[station_name] = {
-                "H_prev": last_record.get("H", 0.0),
-                "R_prev": last_record.get("R", 0.0),
-                "D_prev": last_record.get("D", 0.0),
-                "H_tide_prev": last_record.get("H_tide", H_tide_current), 
+                "H_prev": st_data.get("H", 0.0),
+                "R_prev": st_data.get("R", 0.0),
+                "D_prev": st_data.get("D", 0.0),
+                "H_tide_prev": st_data.get("H_tide", H_tide_current), 
                 "ts_prev": last_ts
             }
         else:
             # Khởi tạo mặc định nếu trạm hoàn toàn mới
             stations_cache[station_name] = {
-                "H_prev": 0.0, "R_prev": None, "D_prev": None, 
-                "H_tide_prev": None, "ts_prev": None
+                "H_prev": 0.0, 
+                "R_prev": None, 
+                "D_prev": None, 
+                "H_tide_prev": None, 
+                "ts_prev": None
             }
-
+            
     # Bắt đầu tính toán
     state = stations_cache[station_name]
     H_prev = state["H_prev"]
@@ -124,7 +132,7 @@ def calculate_h_and_v(station_name, R_current, D_current, H_tide_current, ts_cur
     }
     return H_current, V_current
 
-def calculate_and_classify_risk(H, V, R, H_tide, H_crit=50.0, H_warning=30.0, T_response=10.0, w_H=0.75, w_V=0.25, R_high=15.0, H_tide_high=150):
+def calculate_and_classify_risk(H, V, R, H_tide, H_crit=50.0, H_warning=30.0, T_response=10.0, w_H=0.75, w_V=0.25, R_high=15.0, H_tide_high=1.5):
     delta_H_crit = H_crit - H_warning
     V_crit = delta_H_crit / T_response
 
