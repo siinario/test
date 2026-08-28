@@ -108,7 +108,11 @@ def calculate_h_and_v(station_name, R_current, D_current, H_tide_current, ts_cur
             # 1. Mức nước dâng do Mưa - Xả (cm)
             r_avg = (R_prev + R_current) / 20.0  
             D_avg = (D_prev + D_current) / 2.0   
-            delta_H_rain = ((r_avg - D_avg) * delta_t) / 10.0  
+
+            # Chỉ xả nước khi bề mặt đang có ngập (H_prev > 0)
+            drainage = D_avg if H_prev > 0 else 0.0
+            delta_H_rain = ((r_avg - drainage) * delta_t) / 10.0  # cm
+            #delta_H_rain = ((r_avg - D_avg) * delta_t) / 10.0  
             
             # KHẮC PHỤC 2: Mức nước dâng/rút do Triều cường (Đổi mét sang cm)
             delta_H_tide = (H_tide_current - H_tide_prev) * 100.0
