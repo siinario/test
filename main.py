@@ -51,7 +51,7 @@ def on_connect(client, userdata, flags, rc):
 # ==========================================
 # 4. THUẬT TOÁN XỬ LÝ DỮ LIỆU THỦY VĂN (MỚI)
 # ==========================================
-def calculate_h_and_v(station_name, R_current, D_current, H_tide_current, ts_current):
+def calculate_h_and_v(station_name, R_current, D_current, H_tide_current, ts_current, Z_street = 1.5):
     global stations_cache
     
     # KHẮC PHỤC 1: Phục hồi bộ nhớ từ MongoDB (Bóc tách chuẩn từ mảng stations_data)
@@ -112,10 +112,11 @@ def calculate_h_and_v(station_name, R_current, D_current, H_tide_current, ts_cur
             # Chỉ xả nước khi bề mặt đang có ngập (H_prev > 0)
             drainage = D_avg if H_prev > 0 else 0.0
             delta_H_rain = ((r_avg - drainage) * delta_t) / 10.0  # cm
-            #delta_H_rain = ((r_avg - D_avg) * delta_t) / 10.0  
             
-            # KHẮC PHỤC 2: Mức nước dâng/rút do Triều cường (Đổi mét sang cm)
-            delta_H_tide = (H_tide_current - H_tide_prev) * 100.0
+            # 2. Mức nước dâng/rút do Triều cường (Đổi mét sang cm)
+            tide_overflow_current = max(0.0, (H_tide_current - Z_street))
+            tide_overflow_prev = max(0.0, (H_tide_prev - Z_street))
+            delta_H_tide = (tide_overflow_current - tide_overflow_prev) * 100.0
             
             # Tổng hợp nước
             delta_H_step = delta_H_rain + delta_H_tide
@@ -136,7 +137,7 @@ def calculate_h_and_v(station_name, R_current, D_current, H_tide_current, ts_cur
     }
     return H_current, V_current
 
-def calculate_and_classify_risk(H, V, R, H_tide, H_crit=50.0, H_warning=30.0, T_response=10.0, w_H=0.75, w_V=0.25, R_high=15.0, H_tide_high=1.5):
+def calculate_and_classify_risk(H, V, R, H_tide, H_crit=50.0, H_warning=30.0, T_response=10.0, w_H=0.75, w_V=0.25, R_high=15.0, H_tide_high=1.5, Z_street = 1.5):
     delta_H_crit = H_crit - H_warning
     V_crit = delta_H_crit / T_response
 
@@ -211,6 +212,7 @@ def process_station_data(station_name, R, D, H_tide, timestamp_str):
     final_record = {
         "station_name": station_name,
         "timestamp": timestamp_str,
+        "Z_street": Z_street,
         "R": float(R),
         "D": float(D),
         "H_tide": float(H_tide),
