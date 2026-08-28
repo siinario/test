@@ -215,7 +215,7 @@ def process_station_data(station_name, R, D, H_tide, timestamp_str):
         "D": float(D),
         "H_tide": float(H_tide),
         "H": round(H_current, 2),
-        "V": round(V_current, 2),
+        "V": round(V_current, 5),
         "S_risk": risk_result["S_risk"],
         "T_crit_min": risk_result["T_crit_min"],
         "code": risk_result["code"],
