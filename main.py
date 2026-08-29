@@ -136,7 +136,7 @@ def calculate_h_and_v(station_name, R_current, D_current, H_tide_current, ts_cur
     }
     return H_current, V_current
 
-def calculate_and_classify_risk(H, V, R, H_tide, H_crit=50.0, H_warning=30.0, T_response=10.0, w_H=0.75, w_V=0.25, R_high=8.0, H_tide_high=1.5, Z_street = 1.2):
+def calculate_and_classify_risk(H, V, R, H_tide, H_crit=50.0, H_warning=30.0, T_response=10.0, w_H=0.75, w_V=0.25, R_high=8.0, Z_street = 0.5):
     delta_H_crit = H_crit - H_warning
     V_crit = delta_H_crit / T_response
 
@@ -169,7 +169,7 @@ def calculate_and_classify_risk(H, V, R, H_tide, H_crit=50.0, H_warning=30.0, T_
         }
         
     heavy_rain = R >= R_high
-    high_tide = H_tide >= H_tide_high
+    high_tide = H_tide >= Z_street
 
     if heavy_rain and high_tide: Status = "Ngập kết hợp Mưa lớn + Triều cường"
     elif not heavy_rain and high_tide: Status = "Ngập do Triều cường"
