@@ -116,7 +116,7 @@ def calculate_h_and_v(station_name, R_current, D_current, H_tide_current, ts_cur
             # 2. Mức nước dâng/rút do Triều cường (Đổi mét sang cm)
             tide_overflow_current = max(0.0, (H_tide_current - Z_street))
             tide_overflow_prev = max(0.0, (H_tide_prev - Z_street))
-            delta_H_tide = max(0.0,(tide_overflow_current - tide_overflow_prev) * 100.0)
+            delta_H_tide = (tide_overflow_current - tide_overflow_prev) * 100.0
             
             # Tổng hợp nước
             delta_H_step = delta_H_rain + delta_H_tide
