@@ -201,17 +201,17 @@ def process_station_data(station_name, R, D, H_tide, timestamp_str):
     
     # Đã truyền thêm tham số float(H_tide) vào hàm tính toán
     H_current, V_current = calculate_h_and_v(
-        station_name, float(R), float(D), float(H_tide), ts_current
+        station_name, float(R), float(D), float(H_tide), ts_current, Z_street = 0.5
     )
     
     risk_result = calculate_and_classify_risk(
-        H=H_current, V=V_current, R=float(R), H_tide=float(H_tide)
+        H=H_current, V=V_current, R=float(R), H_tide=float(H_tide),Z_street = 0.5
     )
     
     final_record = {
         "station_name": station_name,
         "timestamp": timestamp_str,
-        "Z_street": Z_street,
+        #"Z_street": Z_street,
         "R": float(R),
         "D": float(D),
         "H_tide": float(H_tide),
