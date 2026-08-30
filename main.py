@@ -196,7 +196,7 @@ def update_or_append_station_result(new_record):
     if not updated:
         system_latest_state.append(new_record)
 
-def process_station_data(station_name, R, D, H_tide, timestamp_str):
+def process_station_data(station_name, R, D, H_tide, Z_street, timestamp_str): #<-----------------------------
     ts_current = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S")
     
     # Đã truyền thêm tham số float(H_tide) vào hàm tính toán
@@ -205,7 +205,7 @@ def process_station_data(station_name, R, D, H_tide, timestamp_str):
     )
     
     risk_result = calculate_and_classify_risk(
-        H=H_current, V=V_current, R=float(R), H_tide=float(H_tide), Z_street
+        H=H_current, V=V_current, R=float(R), H_tide=float(H_tide), Z_street = Z_street  #<-----------------------------
     )
     
     final_record = {
