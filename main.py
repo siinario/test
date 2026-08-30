@@ -247,7 +247,7 @@ def on_message(client, userdata, msg):
             H_tide = float(station_info.get("H_tide", 0.0))
             
             # Đọc Z_street từ MQTT gửi qua
-            Z_street = float(station_info.get("Z_street", 1.0)  #<------------------------
+            Z_street = float(station_info.get("Z_street",0.0)  #<------------------------
             result = process_station_data(station_name, R, D, H_tide, Z_street, timestamp_str) #<------------------------
             processed_records.append(result)
             
