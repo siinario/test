@@ -83,7 +83,7 @@ def calculate_h_and_v(station_name, R_current, D_current, H_tide_current, ts_cur
             # Khởi tạo mặc định nếu trạm hoàn toàn mới
             stations_cache[station_name] = {
                 "H_prev": 0.0, 
-                "R_prev": None,  #<------------------------
+                "R_prev": None,
                 "D_prev": None, 
                 "H_tide_prev": None, 
                 "ts_prev": None
