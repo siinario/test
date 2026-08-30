@@ -242,8 +242,12 @@ def on_message(client, userdata, msg):
         processed_records = []
         for station_info in raw_payload.get("stations_data", []):
             station_name = station_info.get("station_name", "Unknown")
-            R, D, H_tide = (station_info.get("R", 0.0), station_info.get("D", 0.0), station_info.get("H_tide", 0.0))
-            Z_street = float(station_info.get("z_street"))  #<------------------------
+            R = float(station_info.get("R", 0.0))
+            D = float(station_info.get("D", 0.0))
+            H_tide = float(station_info.get("H_tide", 0.0))
+            
+            # Đọc z_street từ MQTT gửi qua
+            Z_street = float(station_info.get("z_street", 0.5))  #<------------------------
             result = process_station_data(station_name, R, D, H_tide, Z_street, timestamp_str) #<------------------------
             processed_records.append(result)
             
