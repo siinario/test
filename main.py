@@ -107,7 +107,7 @@ def calculate_h_and_v(station_name, R_current, D_current, H_tide_current, ts_cur
 
         if delta_t > 0:
             # 1. Mức nước dâng do Mưa - Xả (cm)
-            r_avg = (R_prev + R_current) / 2.0  
+            r_avg = (R_prev + R_current) / 20.0  
             D_avg = (D_prev + D_current) / 2.0   
 
             # Chỉ xả nước khi bề mặt đang có ngập (H_prev > 0)
