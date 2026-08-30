@@ -51,7 +51,7 @@ def on_connect(client, userdata, flags, rc):
 # ==========================================
 # 4. THUẬT TOÁN XỬ LÝ DỮ LIỆU THỦY VĂN 
 # ==========================================
-def calculate_h_and_v(station_name, R_current, D_current, H_tide_current, ts_current, Z_street = 1.0):
+def calculate_h_and_v(station_name, R_current, D_current, H_tide_current, ts_current, Z_street):
     global stations_cache
     
     # KHẮC PHỤC 1: Phục hồi bộ nhớ từ MongoDB (Bóc tách chuẩn từ mảng stations_data)
@@ -83,7 +83,7 @@ def calculate_h_and_v(station_name, R_current, D_current, H_tide_current, ts_cur
             # Khởi tạo mặc định nếu trạm hoàn toàn mới
             stations_cache[station_name] = {
                 "H_prev": 0.0, 
-                "R_prev": None, 
+                "R_prev": None,  #<------------------------
                 "D_prev": None, 
                 "H_tide_prev": None, 
                 "ts_prev": None
@@ -129,14 +129,14 @@ def calculate_h_and_v(station_name, R_current, D_current, H_tide_current, ts_cur
     # Cập nhật lại bộ nhớ
     stations_cache[station_name] = {
         "H_prev": H_current,
-        "R_prev": R_current,
+        "R_prev": R_current,  #<------------------------
         "D_prev": D_current,
         "H_tide_prev": H_tide_current, # Cập nhật H_tide cũ
         "ts_prev": ts_current,
     }
     return H_current, V_current
 
-def calculate_and_classify_risk(H, V, R, H_tide, H_crit=50.0, H_warning=30.0, T_response=10.0, w_H=0.75, w_V=0.25, R_high=8.0, Z_street = 1.0):
+def calculate_and_classify_risk(H, V, R, H_tide, H_crit=50.0, H_warning=30.0, T_response=10.0, w_H=0.75, w_V=0.25, R_high=8.0, Z_street):
     delta_H_crit = H_crit - H_warning
     V_crit = delta_H_crit / T_response
 
@@ -201,17 +201,17 @@ def process_station_data(station_name, R, D, H_tide, timestamp_str):
     
     # Đã truyền thêm tham số float(H_tide) vào hàm tính toán
     H_current, V_current = calculate_h_and_v(
-        station_name, float(R), float(D), float(H_tide), ts_current, Z_street = 1.0
+        station_name, float(R), float(D), float(H_tide), ts_current, Z_street
     )
     
     risk_result = calculate_and_classify_risk(
-        H=H_current, V=V_current, R=float(R), H_tide=float(H_tide), Z_street = 1.0
+        H=H_current, V=V_current, R=float(R), H_tide=float(H_tide), Z_street
     )
     
     final_record = {
         "station_name": station_name,
         "timestamp": timestamp_str,
-        #"Z_street": Z_street,
+        "Z_street": Z_street, #<------------------------
         "R": float(R),
         "D": float(D),
         "H_tide": float(H_tide),
@@ -242,9 +242,9 @@ def on_message(client, userdata, msg):
         processed_records = []
         for station_info in raw_payload.get("stations_data", []):
             station_name = station_info.get("station_name", "Unknown")
-            R, D, H_tide = station_info.get("R", 0.0), station_info.get("D", 0.0), station_info.get("H_tide", 0.0)
-            
-            result = process_station_data(station_name, R, D, H_tide, timestamp_str)
+            R, D, H_tide = (station_info.get("R", 0.0), station_info.get("D", 0.0), station_info.get("H_tide", 0.0))
+            Z_street = float(station_info.get("z_street"))  #<------------------------
+            result = process_station_data(station_name, R, D, H_tide, Z_street, timestamp_str) #<------------------------
             processed_records.append(result)
             
         if processed_records:
