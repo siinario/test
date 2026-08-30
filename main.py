@@ -136,7 +136,7 @@ def calculate_h_and_v(station_name, R_current, D_current, H_tide_current, ts_cur
     }
     return H_current, V_current
 
-def calculate_and_classify_risk(H, V, R, H_tide, H_crit=50.0, H_warning=30.0, T_response=10.0, w_H=0.75, w_V=0.25, R_high=8.0, Z_street):
+def calculate_and_classify_risk(H, V, R, H_tide, Z_street, H_crit=50.0, H_warning=30.0, T_response=10.0, w_H=0.75, w_V=0.25, R_high=8.0):
     delta_H_crit = H_crit - H_warning
     V_crit = delta_H_crit / T_response
 
@@ -205,7 +205,7 @@ def process_station_data(station_name, R, D, H_tide, Z_street, timestamp_str): #
     )
     
     risk_result = calculate_and_classify_risk(
-        H=H_current, V=V_current, R=float(R), H_tide=float(H_tide), Z_street  #<-----------------------------
+        H=H_current, V=V_current, R=float(R), H_tide=float(H_tide), Z_street = Z_street  #<-----------------------------
     )
     
     final_record = {
