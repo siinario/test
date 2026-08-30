@@ -17,7 +17,7 @@ MQTT_TOPIC_PROCESSED = "floodguard/processed_data"
 last_alert_time = 0
 
 # Khởi tạo bộ đệm cho thuật toán mới
-collection.delete_many({})
+#collection.delete_many({})
 stations_cache = {}
 system_latest_state = []
 
